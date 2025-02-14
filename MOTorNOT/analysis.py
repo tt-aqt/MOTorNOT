@@ -21,8 +21,7 @@ def plot_phase_space_trajectories(acceleration, X, V, axis='x'):
     fig.update_yaxes(range=[-V[:, :, i].max(), V[:, :, i].max()])
     fig.show()
 
-
-def plot_trajectories(acceleration, X, t, plane='xy', limits=None):
+def plot_trajectories(acceleration, X, t, plane='xy', limits=None, numpoints=50, quiver_scale=3e-4, component='all', color='#ffffff'):
     i = ord(plane[0])-120
     j = ord(plane[1])-120
     x = X[:, :, i]
@@ -30,16 +29,18 @@ def plot_trajectories(acceleration, X, t, plane='xy', limits=None):
 
     if limits is None:
         limits = [(x.min(), x.max()), (y.min(), y.max())]
-    fig = plot_2D(acceleration, plane, limits=limits, numpoints=100)
+    fig = plot_2D(acceleration, plane, limits=limits, numpoints=numpoints, quiver_scale=quiver_scale, component=component,title='Acceleration at zero speed (m/s^2)')
 
     for p in range(X.shape[1]):
-        fig.add_trace(go.Scatter(x=x[:, p], y=y[:, p], line=dict(color='#ffffff')))
+        #fig.add_trace(go.Scatter(x=x[:, p], y=y[:, p], marker=dict(color='#ffffff', size=5),line=dict(color='#888888')))
+        fig.add_trace(go.Scatter(x=x[:, p], y=y[:, p], mode='lines+markers',marker=dict(color='#ffffff', size=5),line=dict(color='#222222')))
     fig.update_layout(showlegend=False)
     fig.update_layout(
-        xaxis=go.layout.XAxis(title=go.layout.xaxis.Title(text=r'${}$'.format(plane[0]))),
-        yaxis=go.layout.YAxis(title=go.layout.yaxis.Title(text=r'${}$'.format(plane[1])))
+       xaxis = go.layout.XAxis(title=go.layout.xaxis.Title(text=r'${} (m)$'.format(plane[0]))),
+        yaxis = go.layout.YAxis(title=go.layout.yaxis.Title(text=r'${} (m)$'.format(plane[1])))
         )
 
     fig.update_xaxes(range=[limits[0][0], limits[0][1]])
     fig.update_yaxes(range=[limits[1][0], limits[1][1]])
     fig.show()
+    return fig

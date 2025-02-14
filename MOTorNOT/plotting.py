@@ -7,7 +7,6 @@ def radial_projection(x, v):
     X = np.atleast_2d(x)
     V = np.atleast_2d(v)
 
-
     phi = np.mod(np.arctan2(X[:, 1], X[:, 0]), 2*np.pi)
     xproj = np.transpose([np.cos(phi), np.zeros(len(phi)), np.zeros(len(phi))])
     yproj = np.transpose([np.zeros(len(phi)), np.sin(phi), np.zeros(len(phi))])
@@ -25,6 +24,7 @@ def axial_projection(x, v):
     return (zhat*V).sum(axis=1)
 
 def sample_2d(func, plane, limits, numpoints, component='all'):
+    ''' samples points in a plane of a function with all velocities set to zero '''
     i = ord(plane[0]) - 120    # ordinate index
     j = ord(plane[1]) - 120    # abscissa index
 
@@ -52,7 +52,7 @@ def sample_2d(func, plane, limits, numpoints, component='all'):
 def plane_indices(plane):
     return ord(plane[0])-120, ord(plane[1])-120
 
-def plot_2D(func, plane='xy', limits=[(-20e-3, 20e-3), (-20e-3, 20e-3)], numpoints=40, quiver=True, quiver_scale=5e-4, component='all'):
+def plot_2D(func, plane='xy', limits=[(-20e-3, 20e-3), (-20e-3, 20e-3)], numpoints=40, quiver=True, quiver_scale=5e-4, component='all', title='title'):
     ''' Generates a 2D plot of the passed vector function in the given plane. '''
 
     i = ord(plane[0]) - 120    # ordinate index
@@ -69,7 +69,8 @@ def plot_2D(func, plane='xy', limits=[(-20e-3, 20e-3), (-20e-3, 20e-3)], numpoin
                       z=agrid,
                       colorscale="Rainbow",
                       zsmooth='best',
-                      colorbar={'title': 'Acceleration', 'titleside': 'right'})
+#                      colorbar={'title': title, 'titleside': 'right'})
+                      colorbar = {'title': title})
     if quiver:
         n = numpoints
         X2, agrid2, a2 = X, agrid, a
@@ -80,11 +81,17 @@ def plot_2D(func, plane='xy', limits=[(-20e-3, 20e-3), (-20e-3, 20e-3)], numpoin
         ay = (a2[:, j] / np.linalg.norm(a2, axis=1)).reshape(n, n)
 
         fig = ff.create_quiver(xg, yg, ax, ay, scale=quiver_scale)
-        fig['data'][0]['line']['color'] = 'rgb(255,255,255)'
+        fig['data'][0]['line']['color'] = 'rgb(122,122,122)'
 
     fig.add_trace(surf)
     fig.update_xaxes(range=[xi.min(), xi.max()])
     fig.update_yaxes(range=[xj.min(), xj.max()])
+
+    fig.update_layout(showlegend=False)
+    fig.update_layout(
+        xaxis=go.layout.XAxis(title=go.layout.xaxis.Title(text=r'${}$ this hshodld wokrsyyyr '.format(plane[0])+'m')),
+        yaxis=go.layout.YAxis(title=go.layout.yaxis.Title(text=r'${}$'.format(plane[1])+'m'))
+        )
 
     return fig
 

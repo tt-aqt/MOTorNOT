@@ -1,5 +1,6 @@
 import numpy as np
 import attr
+from scipy.spatial.transform import Rotation
 
 @attr.s
 class Beam:
@@ -7,13 +8,22 @@ class Beam:
         Gaussian, or Diffracted beams will implement their own methods describing
         their spatial intensity variation.
     '''
-    direction = attr.ib(converter=np.array)
-    power = attr.ib(converter=float)
-    radius = attr.ib(converter=float)
+    direction = attr.ib(converter=np.array) #must be a unit vector array e.g. [0,1,0]
+    power = attr.ib(converter=float) #power in W
+    radius = attr.ib(converter=float) #1/e^2 intensity beam radius in m
     detuning = attr.ib(converter=float)
     handedness = attr.ib(converter=int)
     origin = attr.ib(default=np.array([0, 0, 0]))
-    cutoff = attr.ib(default=None)
+    cutoff = attr.ib(default=None) # radius at which intensity cuts to zero. in units of m except for Guidebeam, which is in units of radius.
+    holedia = attr.ib(default=None)
+    #stageoffset = attr.ib(default=None) # separation between beams for multiple beams per beam
+    #stagenr = attr.ib(default=None) # number of beams for multiple beams per beam
+    odtwavelength = attr.ib(default=None)  #TT added for dipole force trap beams
+    # tetrahedron pit trap.  plane of mirror is assumed x-y.  incoming beam assumed from +z to -z.
+    # origin of refl beams is at pit vertex z=-a/(2 sqrt(3)) tan theta. reflected beams go up
+    # overall system origin is above this (quadrupole field null)
+    pit_side = attr.ib(default=None)  # = a = side of equilateral triangle pit for tetrahedron trap triangle beams in m https://doi.org/10.1364/OE.17.013601
+    pit_angle = attr.ib(default=(np.pi-np.arccos(-1/3))/2)   # = theta = triangle pit declination angle from horizontal in rad https://doi.org/10.1364/OE.17.013601
 
 @attr.s
 class UniformBeam(Beam):
@@ -88,8 +98,149 @@ class DiffractedBeam(Beam):
 @attr.s
 class GaussianBeam(Beam):
     def intensity(self, X):
+        X0 = X-self.origin# X0 is a vector of position vectors
+        r = np.linalg.norm(-X0+np.outer(np.dot(X0,self.direction),(self.direction)),axis=1)#  norm axis=1 squares all elements in array then adds the elements of each row and sqrts, giving a vector.  r is a vector of radii
+        w = self.radius
+        ##I = self.power/np.pi/self.radius**2 TT this is wrong.  corrected.
+        I = 2 * self.power / np.pi / self.radius ** 2
+        return I*np.exp(-2*r**2/w**2) * (r <= self.cutoff)
+
+@attr.s
+class GaussianBeamWithHole(Beam):
+    def intensity(self, X):
         X0 = X-self.origin
         r = np.linalg.norm(-X0+np.outer(np.dot(X0,self.direction),(self.direction)),axis=1)
         w = self.radius
-        I = self.power/np.pi/self.radius**2
-        return I*np.exp(-2*r**2/w**2) * (r <= self.cutoff)
+        ##I = self.power/np.pi/self.radius**2 TT this is wrong.  corrected.
+        I = 2*self.power / np.pi / self.radius ** 2
+        return I*np.exp(-2*r**2/w**2) * (r <= self.cutoff) * (r >= self.holedia/2)
+
+@attr.s
+class GuideBeam(Beam): #beam is in fiber starting at the origin and going in -self.direction.  beam is in free space starting at the origin and going in +self.direction
+    def intensitygradient(self, X): # X is a vector of points
+        X0 = X-self.origin
+        #print(X0)
+        #print(X0.shape[0])
+        z = np.dot(X0, self.direction)  # vector of z coordinates
+        #print(z)
+        zvectors=self.direction*X0
+        #print(zvectors)
+        rho = np.linalg.norm(X0-np.outer(np.dot(X0,self.direction),self.direction), axis=1)# vector of rho coordinates
+        #print(rho)
+        rhovectors = X0-np.outer(np.dot(X0,self.direction),self.direction)
+        #print(rhovectors)
+        #print((rhovectors.T/rho).T)
+        zR=np.pi*self.radius**2/self.odtwavelength
+        w = self.radius*(z<=0)+self.radius*np.sqrt(1+(z/zR)**2)*(z>0)
+        #print(w)
+        I0 = 2 * self.power / np.pi / self.radius ** 2
+        #print(rho/w**2)
+        #print( (rho / w ** 2 *(rhovectors.T/rho)).T)
+        drho= (I0*(-4*rho/w**2 )*np.exp(-2*rho**2/w**2) * (rho <= self.cutoff*w) *(rhovectors.T/rho)).T
+        dz= (I0*((2*z/zR**2)*(-1/(1+(z/zR)**2)**2 + 2*rho**2/w**2/(1+(z/zR)**2)**3))*np.exp(-2*rho**2/w**2) * (rho <= self.cutoff*w) *(zvectors.T/z)).T
+        drho= (I0*(-4*rho/w**2 )*np.exp(-2*rho**2/w**2)  *(rhovectors.T/rho)).T
+        dz= (I0*((2*z/zR**2)*(-1/(1+(z/zR)**2)**2 + 2*rho**2/w**2/(1+(z/zR)**2)**3))*np.exp(-2*rho**2/w**2)  *(zvectors.T/z)).T
+        #print(drho)
+        #print(dz)
+        #print(drho+dz)
+        #return I0*( (-4*rho/w**2) + (2*z/zR**2)*(-1/(1+(z/zR)**2)**2 + 2*rho**2/w**2/(1+(z/zR)**2)**3)*self.direction )*np.exp(-2*rho**2/w**2) * (rho <= self.cutoff*w)
+        return drho+dz
+
+@attr.s
+class TriangleBeamGaussian(Beam):
+    def intensity(self, X):
+        X0 = X-self.origin# X0 is a vector of position vectors relative to beam origin instead of field null
+        r = np.linalg.norm(-X0 + np.outer(np.dot(X0, self.direction), (self.direction)), axis=1)
+        axis = np.cross(np.array([0, 0, 1]), self.direction)  # rotate X0s around this axis to bring system xy plane into xy plane of beam
+        axis = axis / np.linalg.norm(axis) # normalized axis
+        rotation_angle = - np.arccos(np.dot(np.array([0, 0, 1]), self.direction))
+        rot = Rotation.from_rotvec(rotation_angle * axis)
+        newX0 = rot.apply(X0)
+        newX = np.dot(newX0, axis) #component of position vector along rotation axis is newX component.  it is in plane of mirror parallel to substrate plane
+        # newYvec = newX0 - np.dot(axis, newX0)*axis - np.dot(np.array([0, 0, 1]), newX0)*np.array([0, 0, 1])# newY vector in plane of mirror
+        newYhat = np.cross(np.array([0, 0, 1]), axis)
+        newYvec = newX0 - np.outer(np.dot(X0, newYhat), newYhat)  # newY vector in plane of mirror
+        newY = np.dot( newYvec , np.cross(np.array([0,0,1]), axis) ) # y component in direction up mirror wall.  newY axis connects pit vertex to pit edge ctr
+        w = self.radius
+        I = 2 * self.power / np.pi / self.radius ** 2
+        return I * np.exp(-2 * r ** 2 / w ** 2) * (newY>0) * (newY / np.absolute(newX) > 1 / (np.sqrt(3) * np.cos(self.pit_angle))) \
+               * (np.dot(X0, np.array([0, 0, 1])) > 0) \
+            * (newY < self.pit_side / (2 * np.sqrt(3) * np.cos(self.pit_angle)))
+    def intensity2(self, X):
+        X0 = X-self.origin# X0 is a vector of position vectors relative to beam origin
+        r = np.linalg.norm(-X0 + np.outer(np.dot(X0, self.direction), (self.direction)), axis=1)
+        axis = np.cross(np.array([0, 0, 1]), self.direction)  # rotate X0s around this axis to bring system xy plane into xy plane of beam
+        axis = axis / np.linalg.norm(axis) # normalized axis
+        rotation_angle = - np.arccos(np.dot(np.array([0, 0, 1]), self.direction))
+        rot = Rotation.from_rotvec(rotation_angle * axis)
+        newX0 = rot.apply(X0)
+        newX = np.dot(newX0, axis) #component of position vector along rotation axis is newX component.  it is in plane of mirror parallel to substrate plane
+        #newYvec = newX0 - np.dot(axis, newX0)*axis - np.dot(np.array([0, 0, 1]), newX0)*np.array([0, 0, 1])# newY vector in plane of mirror
+        newYhat = np.cross(np.array([0, 0, 1]),axis)
+        newYvec = newX0 - np.outer(np.dot(X0, newYhat), newYhat)  # newY vector in plane of mirror
+        newY = np.dot( newYvec , np.cross(np.array([0,0,1]), axis) ) # y component in direction up mirror wall.  newY axis connects pit vertex to pit edge ctr
+        w = self.radius
+        I = 2 * self.power / np.pi / self.radius ** 2
+        return I * np.exp(-2 * r ** 2 / w ** 2) * (newY>0) * (newY / np.absolute(newX) > 1 / (np.sqrt(3) * np.cos(self.pit_angle))) \
+               * (np.dot(X0, np.array([0, 0, 1])) > 0) \
+            * (newY < self.pit_side / (2 * np.sqrt(3) * np.cos(self.pit_angle))), X0, newX0, newX, newY, axis, rotation_angle*180/np.pi
+
+class TriangleBeamUniform(Beam):
+    def intensity(self, X):
+        X0 = X-self.origin# X0 is a vector of position vectors relative to beam origin
+        r = np.linalg.norm(-X0 + np.outer(np.dot(X0, self.direction), (self.direction)), axis=1)
+        axis = np.cross(np.array([0, 0, 1]), self.direction)  # rotate X0s around this axis to bring system xy plane into xy plane of beam
+        axis = axis / np.linalg.norm(axis) # normalized axis
+        rotation_angle = - np.arccos(np.dot(np.array([0, 0, 1]), self.direction))
+        rot = Rotation.from_rotvec(rotation_angle * axis)
+        rot2 = Rotation.from_rotvec(rotation_angle / 2 * axis)
+        newX0 = rot.apply(X0)
+        faceX0 = rot2.apply(X0)
+        newX = np.dot(newX0, axis) #component of position vector along rotation axis is newX component.  it is in plane of mirror parallel to substrate plane
+        #print(newX0)
+        #print(axis)
+        #m=np.size(newX0,0)
+        #axisvec=np.tile(axis,(m,1))
+        #print('axisvec ',axisvec)
+        #print(np.dot(newX0,axis))
+        #print('np.dot(newX0,axisvec) ',np.dot(newX0,axisvec))
+        newYhat=rot.apply(np.cross(self.direction,axis))
+        newY = np.dot(newX0, newYhat)
+        #newYvec = newX0 - np.dot(newX0, axisvec) * axis - np.dot(newX0, np.array([0, 0, 1])) * np.array( [0, 0, 1])  # newY vector in plane of mirror
+        #newYhat = np.cross(np.array([0, 0, 1]),axis)
+        #newYvec = newX0 - np.outer(np.dot(X0, newYhat), newYhat)  # newY vector in plane of mirror
+        #newY = np.dot( newYvec , np.cross(np.array([0,0,1]), axis) ) # y component in direction up mirror wall.  newY axis connects pit vertex to pit edge ctr
+        w = self.radius
+        I = 2 * self.power / np.pi / self.radius ** 2
+        return I * (r < self.cutoff) * (newY > 0)* (newY / np.absolute(newX) > 1 / (np.sqrt(3)))* (newY < self.pit_side / (2 * np.sqrt(3))) \
+            * (np.dot(faceX0, np.array([0, 0, 1])) > 0)
+    def intensity2(self, X):
+        X0 = X-self.origin# X0 is a vector of position vectors relative to beam origin
+        r = np.linalg.norm(-X0 + np.outer(np.dot(X0, self.direction), (self.direction)), axis=1)
+        axis = np.cross(np.array([0, 0, 1]), self.direction)  # rotate X0s around this axis to bring system xy plane into xy plane of beam
+        axis = axis / np.linalg.norm(axis) # normalized axis
+        rotation_angle = - np.arccos(np.dot(np.array([0, 0, 1]), self.direction))
+        rotation_angle = - (np.pi / 2 - np.arccos(np.dot(np.array([0, 0, 1]), self.direction)))
+        rot = Rotation.from_rotvec(rotation_angle * axis)
+        rot2 = Rotation.from_rotvec(rotation_angle/2 * axis)
+        newX0 = rot.apply(X0)
+        faceX0 = rot2.apply(X0)
+        newX = np.dot(newX0, axis) #component of position vector along rotation axis is newX component.  it is in plane of mirror parallel to substrate plane
+        #print(newX0)
+        #print(axis)
+        #m=np.size(newX0,0)
+        #axisvec=np.tile(axis,(m,1))
+        #print('axisvec ',axisvec)
+        #print(np.dot(newX0,axis))
+        #print('np.dot(newX0,axisvec) ',np.dot(newX0,axisvec))
+        newYhat=rot.apply(np.cross(self.direction,axis))
+        newY = np.dot(newX0, newYhat)
+        #newYvec = newX0 - np.dot(newX0, axisvec) * axis - np.dot(newX0, np.array([0, 0, 1])) * np.array( [0, 0, 1])  # newY vector in plane of mirror
+        #newYhat = np.cross(np.array([0, 0, 1]),axis)
+        #newYvec = newX0 - np.outer(np.dot(X0, newYhat), newYhat)  # newY vector in plane of mirror
+        #newY = np.dot( newYvec , np.cross(np.array([0,0,1]), axis) ) # y component in direction up mirror wall.  newY axis connects pit vertex to pit edge ctr
+        w = self.radius
+        I = 2 * self.power / np.pi / self.radius ** 2
+        return I * (r < self.cutoff) * (newY > 0) * (newY / np.absolute(newX) > 1 / (np.sqrt(3))) \
+               * (np.dot(faceX0, np.array([0, 0, 1])) > 0) \
+               * (newY < self.pit_side / (2 * np.sqrt(3))), X0, newX0, newX, newY, axis, rotation_angle*180/np.pi

@@ -1,6 +1,7 @@
 atom:
-  mass: 171          # mass in amu
-  gamma: 29e6        # linewidth divided by 2pi in Hz
-  wavelength: 399    # wavelength of transition in nm
+  mass: 40          # mass in amu
+  gamma: 35e6        # linewidth divided by 2pi in Hz
+  wavelength: 423    # wavelength of transition in nm
   gF: 1              # g-factor of transition
   Isat: 60          # saturation intensity in mW/cm^2
+  # Isat here uses the Steck definition.  Is = hbar w / 2 tau sigma.  https://steck.us/alkalidata/cesiumnumbers.1.6.pdf.   this is half of the intensity at which stimulated emission = spont emission rate.

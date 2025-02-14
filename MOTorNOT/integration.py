@@ -3,6 +3,7 @@ import pandas as pd
 import attr
 from scipy.integrate import solve_ivp
 from scipy.constants import physical_constants
+from MOTorNOT.analysis import *
 
 amu = physical_constants['atomic mass constant'][0]
 from MOTorNOT import load_parameters, rotate
@@ -11,7 +12,7 @@ atom = load_parameters()['atom']
 def generate_initial_conditions(x0, v0, theta=0, phi=0):
     ''' Generates atomic positions and velocities along the z
         axis, then rotates to the spherical coordinates theta and
-        phi.
+        phi, given in degrees
     '''
     lenx = 0
     if hasattr(x0, '__len__'):
@@ -38,7 +39,20 @@ def generate_initial_conditions(x0, v0, theta=0, phi=0):
     V = V.dot(Rx).dot(Rz)
     return X, V
 
-from MOTorNOT.analysis import *
+def atomic_beam(X0, V, theta=0, phi=0):
+    ''' Generates atomic source starting at point X0=[x0, y0, z0] and pointing in direction given by theta and phi at a range of speeds given in list V
+    '''
+
+    X = np.atleast_2d(X0)
+    V = np.atleast_2d(V)
+
+    Rx = rotate(0, theta)
+    Rz = rotate(2, phi)
+    #print(Rx)
+    #print(Rz)
+    #print(V)
+    V = V.dot(Rx).dot(Rz)
+    return X, V
 
 @attr.s
 class Solver:
@@ -48,6 +62,12 @@ class Solver:
 
     def run(self, duration, dt=None):
         self.y, self.X, self.V, self.t = solve(self.acceleration,
+                                       self.X0,
+                                       self.V0,
+                                       duration, dt=dt)
+        return self
+    def run_with_stochastics(self, duration, dt=1e-5):
+        self.y, self.X, self.V, self.t = solve_with_stochastics(self.acceleration,
                                        self.X0,
                                        self.V0,
                                        duration, dt=dt)
@@ -72,11 +92,12 @@ class Solver:
         ''' Returns an array containing the velocities at the ith timestep. '''
         return self.V[i, :, :]
 
-    def plot(self, plane='xy', limits=None, trapped_only=False):
+    def plot(self, plane='xy', limits=None, trapped_only=False, numpoints=50, quiver_scale=3e-4, component='all', color='#ffffff'):
         X = self.X
         if trapped_only:
             X = X[:, self.trapped(), :]
-        plot_trajectories(self.acceleration, X, self.t, plane=plane, limits=limits)
+        fig=plot_trajectories(self.acceleration, X, self.t, plane=plane, limits=limits, numpoints=numpoints, quiver_scale=quiver_scale, component=component, color='#ffffff')
+        return fig
 
     def phase_plot(self, axis='x', trapped_only=False):
         X = self.X
@@ -106,7 +127,6 @@ def solve(acceleration, X0, V0, duration, dt=None):
     ''' Integrates the equations of motion given by the specified force,
         starting from given initial conditions.
     '''
-
     def dydt(t, y):
         ''' Args:
                 y (array-like): Array of length N where the first N/2 values correspond
@@ -117,23 +137,46 @@ def solve(acceleration, X0, V0, duration, dt=None):
         ''' Reconstruct arrays in (N,3) shape from flattened arrays '''
         X = y[0:3*N].reshape(N,3)
         V = y[3*N::].reshape(N,3)
-
         a = acceleration(X, V)
-
         return np.append(V.flatten(), a.flatten())
-
     y0 = np.append(np.array(X0).flatten(), np.array(V0).flatten())
     if dt is not None:
         t_eval = np.arange(0, duration, dt)
         r = solve_ivp(dydt, (0, duration), y0, t_eval=t_eval, vectorized=True)
     else:
         r = solve_ivp(dydt, (0, duration), y0, vectorized=True)
-
     t = r.t
     y = r.y
     N = int(len(y)/6)
-
     X = y[0:3*N, :].T.reshape(-1, N, 3)
     V = y[3*N:6*N, :].T.reshape(-1, N, 3)
+    return y, X, V, t
 
+def solve_with_stochastics(acceleration, X0, V0, duration, dt=1e-5):
+    ''' Integrates the equations of motion given by the specified force,
+        starting from given initial conditions.
+    '''
+    def dydt(t, y):
+        ''' Args:
+                y (array-like): Array of length N where the first N/2 values correspond
+                                to position and the last N/2 to velocity.
+            Returns:
+                '''
+        N = int(len(y)/6)
+        ''' Reconstruct arrays in (N,3) shape from flattened arrays '''
+        X = y[0:3*N].reshape(N,3)
+        V = y[3*N::].reshape(N,3)
+        a = acceleration(X, V, dt)
+        return np.append(V.flatten(), a.flatten())
+    y0 = np.append(np.array(X0).flatten(), np.array(V0).flatten())
+    if dt is not None:
+        t_eval = np.arange(0, duration, dt)
+        r = solve_ivp(dydt, (0, duration), y0, t_eval=t_eval, vectorized=True)
+    else:
+        r = solve_ivp(dydt, (0, duration), y0, vectorized=True)
+    t = r.t
+    y = r.y
+    N = int(len(y)/6)
+    X = y[0:3*N, :].T.reshape(-1, N, 3)
+    V = y[3*N:6*N, :].T.reshape(-1, N, 3)
     return y, X, V, t

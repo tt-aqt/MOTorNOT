@@ -1,10 +1,12 @@
-import ruamel_yaml as yaml
+from ruamel.yaml import YAML
+yaml=YAML()
 import os
 
 def load_parameters():
     path = os.path.join(os.path.dirname(__file__), 'parameters.yml')
     with open(path) as file:
-        params = yaml.load(file, Loader=yaml.SafeLoader)
+#        params = yaml.load(file, Loader=yaml.SafeLoader)
+        params = yaml.load(file)
     return params
 
 import numpy as np

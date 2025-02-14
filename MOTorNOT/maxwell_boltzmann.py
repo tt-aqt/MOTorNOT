@@ -28,9 +28,9 @@ class MaxwellBoltzmann:
         pmax = self.pdf(vprob)
 
         while len(v) < N:
-            v0 = np.random.uniform(0,vmax)
+            v0 = np.random.uniform(0,vmax) # scattershot pick random point on probability dist area
             p0 = np.random.uniform(0, pmax)
-            if p0 <= self.pdf(v0):
+            if p0 <= self.pdf(v0): # make sure it's under the curve
                 v = np.append(v, v0)
 
         return v
