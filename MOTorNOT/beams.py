@@ -138,13 +138,15 @@ class GuideBeam(Beam): #beam is in fiber starting at the origin and going in -se
         #print( (rho / w ** 2 *(rhovectors.T/rho)).T)
         drho= (I0*(-4*rho/w**2 )*np.exp(-2*rho**2/w**2) * (rho <= self.cutoff*w) *(rhovectors.T/rho)).T
         dz= (I0*((2*z/zR**2)*(-1/(1+(z/zR)**2)**2 + 2*rho**2/w**2/(1+(z/zR)**2)**3))*np.exp(-2*rho**2/w**2) * (rho <= self.cutoff*w) *(zvectors.T/z)).T
-        drho= (I0*(-4*rho/w**2 )*np.exp(-2*rho**2/w**2)  *(rhovectors.T/rho)).T
-        dz= (I0*((2*z/zR**2)*(-1/(1+(z/zR)**2)**2 + 2*rho**2/w**2/(1+(z/zR)**2)**3))*np.exp(-2*rho**2/w**2)  *(zvectors.T/z)).T
+        #drho= (I0*(-4*rho/w**2 )*np.exp(-2*rho**2/w**2)  *(rhovectors.T/rho)).T # dI/drho * rhohat#
+        drho = (I0*(self.radius/w)**2 * (-4 * rho / w ** 2) * np.exp(-2 * rho ** 2 / w ** 2) * (rhovectors.T / rho)).T  # dI/drho * rhohat
+        #dz= (I0*((2*z/zR**2)*(-1/(1+(z/zR)**2)**2 + 2*rho**2/w**2/(1+(z/zR)**2)**3))*np.exp(-2*rho**2/w**2)  *(zvectors.T/z)).T # dI/z * zhat
+        dz= (I0*((2*z/(zR**2*(1+(z/zR)**2)**2)*(2*rho**2/self.radius**2/(1+(z/zR)**2))-1)*np.exp(-2*rho**2/w**2) *(zvectors.T / z)).T * (z>0)  # dI/z * zhat
         #print(drho)
         #print(dz)
         #print(drho+dz)
         #return I0*( (-4*rho/w**2) + (2*z/zR**2)*(-1/(1+(z/zR)**2)**2 + 2*rho**2/w**2/(1+(z/zR)**2)**3)*self.direction )*np.exp(-2*rho**2/w**2) * (rho <= self.cutoff*w)
-        return drho+dz
+        return drho+dz # gradient in cylindrical coords is dI/drho * rhohat + 1/rho*dI/dphi*phihat + odI/z * zhat
 
 @attr.s
 class TriangleBeamGaussian(Beam):
