@@ -140,8 +140,8 @@ class GuideBeam(Beam): #beam is in fiber starting at the origin and going in -se
         dz= (I0*((2*z/zR**2)*(-1/(1+(z/zR)**2)**2 + 2*rho**2/w**2/(1+(z/zR)**2)**3))*np.exp(-2*rho**2/w**2) * (rho <= self.cutoff*w) *(zvectors.T/z)).T
         #drho= (I0*(-4*rho/w**2 )*np.exp(-2*rho**2/w**2)  *(rhovectors.T/rho)).T # dI/drho * rhohat#
         drho = (I0*(self.radius/w)**2 * (-4 * rho / w ** 2) * np.exp(-2 * rho ** 2 / w ** 2) * (rhovectors.T / rho)).T  # dI/drho * rhohat
-        #dz= (I0*((2*z/zR**2)*(-1/(1+(z/zR)**2)**2 + 2*rho**2/w**2/(1+(z/zR)**2)**3))*np.exp(-2*rho**2/w**2)  *(zvectors.T/z)).T # dI/z * zhat
-        dz= (I0*((2*z/(zR**2*(1+(z/zR)**2)**2)*(2*rho**2/self.radius**2/(1+(z/zR)**2))-1)*np.exp(-2*rho**2/w**2) *(zvectors.T / z)).T * (z>0)  # dI/z * zhat
+        dz= (I0*((2*z/zR**2)*(-1/(1+(z/zR)**2)**2 + 2*rho**2/w**2/(1+(z/zR)**2)**3))*np.exp(-2*rho**2/w**2)  *(zvectors.T/z)).T # dI/z * zhat
+        dz= (I0*2*z/(zR**2*(1+(z/zR)**2)**2)*(2*rho**2/self.radius**2/(1+(z/zR)**2)-1)*np.exp(-2*rho**2/w**2) *(zvectors.T/z)).T * (z>0)  # dI/z * zhat
         #print(drho)
         #print(dz)
         #print(drho+dz)
